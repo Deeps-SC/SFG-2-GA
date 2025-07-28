@@ -1,0 +1,59 @@
+import xml.etree.ElementTree as ET
+from copy import deepcopy
+
+# Suppress ns0 output in final XML for SCHEDULES (which has namespace)
+ET.register_namespace('', 'http://sterlingcommerce.com/si/resources')
+
+def extract_producermailbox_from_schedule(schedule_elem):
+    """Parse <SCHEDULE_PARAMS> CDATA to extract <value> for producermailbox"""
+    sched_params = schedule_elem.find('SCHEDULE_PARAMS')
+    if sched_params is not None and sched_params.text:
+        try:
+            cdata_text = sched_params.text.strip()
+            # Remove XML declaration inside CDATA
+            if cdata_text.startswith('<?xml'):
+                cdata_text = cdata_text[cdata_text.find('?>') + 2:].strip()
+            # Parse the inner CDATA XML
+            cdata_root = ET.fromstring(cdata_text)
+
+            for param in cdata_root.findall(".//{*}Parameter"):
+                name = param.find("{*}name")
+                value = param.find("{*}value")
+                if name is not None and value is not None:
+                    if name.text.strip().lower() == "producermailbox":
+                        return value.text.strip()
+        except ET.ParseError as e:
+            print(f"⚠️ Error parsing CDATA: {e}")
+    return None
+
+def inject_schedule_for_producer(producer_xml_str, schedules_xml_str):
+    # Parse both XML strings
+    producer_root = ET.fromstring(producer_xml_str)
+    schedules_root = ET.fromstring(schedules_xml_str)
+
+    # Get scux_user_id from producer XML (no namespace)
+    scux_elem = producer_root.find('.//scux_user_id')
+    if scux_elem is None or not scux_elem.text:
+        print("❌ No scux_user_id found in producer XML.")
+        return ET.tostring(producer_root, encoding='unicode')
+
+    scux_id = scux_elem.text.strip().upper()
+
+    # Search for matching schedule
+    matched_schedule = None
+    for schedule in schedules_root.findall(".//SCHEDULE"):
+        mailbox = extract_producermailbox_from_schedule(schedule)
+        if mailbox and mailbox.strip('/').upper() == scux_id:
+            matched_schedule = schedule
+            break
+
+    # Inject schedule if found
+    if matched_schedule is not None:
+        print(f"✅ Match found. Injecting schedule for SCUX ID: {scux_id}")
+        producer_elem = producer_root.find('.//producer')
+        if producer_elem is not None:
+            producer_elem.append(deepcopy(matched_schedule))
+    else:
+        print(f"❌ No matching schedule found for SCUX ID: {scux_id}")
+
+    return ET.tostring(producer_root, encoding='unicode')
