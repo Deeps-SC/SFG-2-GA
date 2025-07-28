@@ -1,0 +1,50 @@
+from xml.etree import ElementTree as ET
+from copy import deepcopy
+
+# Register the default namespace to avoid ns0 prefixes
+ET.register_namespace('', 'http://sterlingcommerce.com/si/resources')
+
+# Step 1: Parse schedules XML and look for match using CDATA
+def extract_producermailbox_from_schedule(schedule_elem):
+    sched_params = schedule_elem.find('SCHEDULE_PARAMS')
+    if sched_params is not None and sched_params.text:
+        try:
+            cdata_text = sched_params.text.strip()
+            # Skip XML declaration if present
+            if cdata_text.startswith("<?xml"):
+                cdata_text = cdata_text[cdata_text.find("?>")+2:].strip()
+            cdata_root = ET.fromstring(cdata_text)
+
+            for param in cdata_root.findall(".//{*}Parameter"):
+                name = param.find("{*}name")
+                value = param.find("{*}value")
+                if name is not None and value is not None:
+                    if name.text.strip().lower() == "producermailbox":
+                        return value.text.strip()
+        except ET.ParseError:
+            pass
+    return None
+
+# Step 2: Inject matching schedule into producer XML
+def inject_matching_schedule(schedules_root, producer_root):
+    producer = producer_root.find(".//producer")
+    scux_elem = producer.find(".//scux_user_id")
+    if scux_elem is None:
+        print("No scux_user_id found.")
+        return
+
+    scux_id = scux_elem.text.strip().upper()  # Normalize casing
+    matched_schedule = None
+
+    for schedule in schedules_root.findall(".//SCHEDULE"):
+        mailbox = extract_producermailbox_from_schedule(schedule)
+        if mailbox and mailbox.strip('/').upper() == scux_id:
+            matched_schedule = schedule
+            break
+
+    if matched_schedule is not None:
+        print(f"✅ Match found. Injecting schedule for SCUX ID: {scux_id}")
+        producer.append(deepcopy(matched_schedule))  # Copy full schedule as-is
+    else:
+        print(f"❌ No matching schedule found for SCUX ID: {scux_id}")
+
