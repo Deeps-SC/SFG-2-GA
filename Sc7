@@ -1,0 +1,71 @@
+import re
+import xml.etree.ElementTree as ET
+
+def extract_producer_id(producer_xml_string: str) -> str:
+    root = ET.fromstring(producer_xml_string)
+    ns = {'ns': root.tag.split('}')[0].strip('{')} if '}' in root.tag else {}
+    elem = root.find('.//ns:scux_USER_ID', ns) if ns else root.find('.//scux_USER_ID')
+    if elem is None or not elem.text:
+        raise ValueError("scux_USER_ID not found in producer XML.")
+    return elem.text.strip()
+
+def html_unescape(text):
+    return (text
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&amp;", "&")
+            .replace("&quot;", '"')
+            .replace("&apos;", "'"))
+
+def clean_schedule_block(schedule_block: str) -> str:
+    # Remove inner XML declarations if present
+    schedule_block = re.sub(r'<\?xml.*?\?>', '', schedule_block).strip()
+
+    # Wrap TIMINGXML contents in CDATA and unescape any escaped characters
+    def timingxml_cdata_wrap(match):
+        inner = html_unescape(match.group(1).strip())
+        return f"<SCHEDULE_TIMINGXML><![CDATA[{inner}]]></SCHEDULE_TIMINGXML>"
+
+    schedule_block = re.sub(
+        r'<SCHEDULE_TIMINGXML>(.*?)</SCHEDULE_TIMINGXML>',
+        timingxml_cdata_wrap,
+        schedule_block,
+        flags=re.DOTALL
+    )
+
+    return schedule_block
+
+def extract_matching_schedule(schedules_xml_string: str, producer_id: str) -> str:
+    pattern = re.compile(
+        r'(<SCHEDULE\b[^>]*>.*?<SCHEDULE_PARAMS><!\[CDATA\[(.*?)\]\]></SCHEDULE_PARAMS>.*?</SCHEDULE>)',
+        re.DOTALL
+    )
+
+    for full_match, cdata_inner_xml in pattern.findall(schedules_xml_string):
+        mailbox_match = re.search(
+            r'<Name>\s*ProducerMailbox\s*</Name>\s*<Value>\s*(.*?)\s*</Value>',
+            cdata_inner_xml
+        )
+        if mailbox_match and mailbox_match.group(1).strip() == producer_id:
+            return clean_schedule_block(full_match)
+    return None
+
+def inject_schedule_for_producer(producer_xml_string: str, schedules_xml_string: str) -> str:
+    producer_id = extract_producer_id(producer_xml_string)
+    schedule_block = extract_matching_schedule(schedules_xml_string, producer_id)
+    if not schedule_block:
+        raise ValueError(f"No matching schedule found for producer ID: {producer_id}")
+
+    # Find the insertion point after <Consumers>
+    consumers_end = re.search(r'(</Consumers\s*>)', producer_xml_string)
+    if not consumers_end:
+        raise ValueError("Could not find </Consumers> in producer XML.")
+    
+    insert_pos = consumers_end.end()
+    updated_xml = (
+        producer_xml_string[:insert_pos] +
+        '\n' + schedule_block + '\n' +
+        producer_xml_string[insert_pos:]
+    )
+
+    return updated_xml
