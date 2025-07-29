@@ -1,0 +1,70 @@
+import xml.etree.ElementTree as ET
+import re
+from xml.dom import minidom
+
+def extract_producer_id(producer_xml_string: str) -> str:
+    root = ET.fromstring(producer_xml_string)
+    ns = {'ns': root.tag.split('}')[0].strip('{')} if '}' in root.tag else {}
+    user_id_elem = root.find('.//ns:scux_USER_ID', ns) if ns else root.find('.//scux_USER_ID')
+    if user_id_elem is None or not user_id_elem.text:
+        raise ValueError("scux_USER_ID not found.")
+    return user_id_elem.text.strip()
+
+def extract_matching_schedule(schedules_xml_string: str, producer_id: str) -> str:
+    matches = re.findall(r'<SCHEDULE>(.*?)</SCHEDULE>', schedules_xml_string, re.DOTALL)
+    for match in matches:
+        cdata_match = re.search(r'<!\[CDATA\[(.*?)\]\]>', match, re.DOTALL)
+        if cdata_match:
+            dataxml = cdata_match.group(1)
+            mbox_match = re.search(
+                r'<Name>\s*ProducerMailbox\s*</Name>\s*<Value>\s*(.*?)\s*</Value>', dataxml
+            )
+            if mbox_match and mbox_match.group(1).strip() == producer_id:
+                return "<SCHEDULE>" + match.strip() + "</SCHEDULE>"
+    return None
+
+def inject_schedule_for_producer(producer_xml_string: str, schedules_xml_string: str) -> str:
+    # Get the producer ID from producer XML
+    producer_id = extract_producer_id(producer_xml_string)
+
+    # Find matching schedule for that producer ID
+    schedule_block = extract_matching_schedule(schedules_xml_string, producer_id)
+    if not schedule_block:
+        raise ValueError(f"No matching schedule found for producer ID: {producer_id}")
+
+    # Inject schedule into producer XML
+    insertion_point = re.search(r'(</Consumers\s*>)', producer_xml_string)
+    if not insertion_point:
+        raise ValueError("Cannot find </Consumers> tag in producer XML.")
+    
+    insert_at = insertion_point.end()
+    updated_xml = (
+        producer_xml_string[:insert_at] +
+        "\n" + schedule_block +  # Inject raw, untouched <SCHEDULE> block
+        producer_xml_string[insert_at:]
+    )
+    return pretty_print_preserving_schedule(updated_xml)
+
+def pretty_print_preserving_schedule(xml_string: str) -> str:
+    # Save CDATA blocks temporarily
+    cdata_map = {}
+    def save_cdata(match):
+        key = f"__CDATA_{len(cdata_map)}__"
+        cdata_map[key] = match.group(0)
+        return key
+
+    xml_temp = re.sub(r'<!\[CDATA\[.*?\]\]>', save_cdata, xml_string, flags=re.DOTALL)
+
+    # Parse and pretty-print
+    try:
+        dom = minidom.parseString(xml_temp)
+        pretty = dom.toprettyxml(indent="  ")
+        pretty = "\n".join(line for line in pretty.splitlines() if line.strip())
+    except Exception:
+        return xml_string  # Fallback if XML parsing fails
+
+    # Restore CDATA
+    for key, value in cdata_map.items():
+        pretty = pretty.replace(key, value)
+
+    return pretty
