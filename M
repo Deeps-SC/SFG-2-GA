@@ -1,0 +1,20 @@
+from schedule import inject_schedule_for_producer
+from lxml import etree
+
+def pretty_print_and_save(xml_string: str, output_path: str):
+    parser = etree.XMLParser(strip_cdata=False, recover=True)
+    root = etree.fromstring(xml_string.encode(), parser)
+    pretty_xml = etree.tostring(root, encoding="unicode", pretty_print=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(pretty_xml)
+
+# Load your input XMLs
+with open("producer.xml", "r", encoding="utf-8") as f:
+    prod_xml = f.read()
+
+with open("schedules.xml", "r", encoding="utf-8") as f:
+    sched_xml = f.read()
+
+# Inject and save
+updated_xml = inject_schedule_for_producer(prod_xml, sched_xml)
+pretty_print_and_save(updated_xml, "output.xml")
