@@ -1,0 +1,76 @@
+import xml.etree.ElementTree as ET
+from xml.dom import minidom
+import re
+
+def inject_schedule_for_producer(producer_xml_string: str, schedules_xml_string: str) -> str:
+    # Parse the producer XML to get the ProducerMailbox ID
+    try:
+        prod_root = ET.fromstring(producer_xml_string)
+    except ET.ParseError:
+        return producer_xml_string
+
+    nsmap = {}  # No namespace used in producer XML
+
+    user_id_elem = prod_root.find('.//scux_USER_ID', nsmap)
+    if user_id_elem is None or not user_id_elem.text:
+        return producer_xml_string
+
+    producer_id = user_id_elem.text.strip()
+    expected_mailbox = f"/{producer_id}"
+
+    # Step 1: Search for <SCHEDULE> block that contains matching ProducerMailbox
+    schedule_blocks = re.findall(r"<SCHEDULE\b.*?</SCHEDULE>", schedules_xml_string, re.DOTALL)
+    matched_schedule = None
+    original_cdata = None
+
+    for sched in schedule_blocks:
+        cdata_match = re.search(
+            r"<SCHEDULE_PARAMS><!\[CDATA\[(.*?)\]\]></SCHEDULE_PARAMS>", sched, re.DOTALL
+        )
+        if not cdata_match:
+            continue
+
+        cdata_inner = cdata_match.group(1)
+        if f"<Name>ProducerMailbox</Name><Value>{expected_mailbox}</Value>" in cdata_inner:
+            matched_schedule = sched
+            original_cdata = cdata_inner
+            break
+
+    if not matched_schedule or not original_cdata:
+        return producer_xml_string  # No matching schedule found
+
+    # Step 2: Replace CDATA with a placeholder
+    cleaned_sched = re.sub(
+        r"<SCHEDULE_PARAMS><!\[CDATA\[.*?\]\]></SCHEDULE_PARAMS>",
+        "<SCHEDULE_PARAMS>__CDATA_PLACEHOLDER__</SCHEDULE_PARAMS>",
+        matched_schedule,
+        flags=re.DOTALL
+    )
+
+    # Step 3: Pretty-print the cleaned schedule
+    try:
+        schedule_elem = ET.fromstring(cleaned_sched)
+        pretty_sched = minidom.parseString(ET.tostring(schedule_elem, encoding="utf-8")).toprettyxml(indent="  ")
+    except ET.ParseError:
+        return producer_xml_string  # In case of bad XML
+
+    # Step 4: Restore CDATA content (preserve raw)
+    pretty_sched = pretty_sched.replace(
+        "<SCHEDULE_PARAMS>__CDATA_PLACEHOLDER__</SCHEDULE_PARAMS>",
+        f"<SCHEDULE_PARAMS><![CDATA[{original_cdata}]]></SCHEDULE_PARAMS>"
+    )
+
+    # Step 5: Pretty-print the producer XML
+    try:
+        prod_root = ET.fromstring(producer_xml_string)
+        pretty_xml = minidom.parseString(ET.tostring(prod_root, encoding="utf-8")).toprettyxml(indent="  ")
+    except ET.ParseError:
+        return producer_xml_string
+
+    # Step 6: Inject pretty schedule after </Consumers>
+    injection_point = "</Consumers>"
+    if injection_point not in pretty_xml:
+        return producer_xml_string
+
+    updated_xml = pretty_xml.replace(injection_point, f"{injection_point}\n{pretty_sched}")
+    return updated_xml
