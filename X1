@@ -1,0 +1,48 @@
+import re
+import xmltodict
+import json
+
+def strip_namespace(xml_content: str) -> str:
+    """
+    Strips XML namespaces and prefixes from tags and attributes.
+    """
+    # Remove xmlns declarations (e.g., xmlns="..." or xmlns:xsi="...")
+    xml_content = re.sub(r'\sxmlns(:\w+)?="[^"]+"', '', xml_content)
+
+    # Remove namespace prefixes (e.g., <xsi:SCHEDULE> → <SCHEDULE>)
+    xml_content = re.sub(r'<(/?)(\w+):', r'<\1', xml_content)
+
+    return xml_content
+
+def convert_schedules_to_dict(xml_input_path: str, output_path: str):
+    """
+    Converts schedules.xml (with namespaces) into a cleaned Python dict and saves it as JSON.
+    """
+    try:
+        # Step 1: Read raw XML
+        with open(xml_input_path, 'r', encoding='utf-8') as f:
+            xml_raw = f.read()
+
+        # Step 2: Strip namespaces
+        xml_clean = strip_namespace(xml_raw)
+
+        # Step 3: Parse XML to dict
+        schedules_dict = xmltodict.parse(xml_clean)
+
+        # Step 4: Save as JSON
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(schedules_dict, f, indent=2)
+
+        print(f"✅ Cleaned schedules dict saved to: {output_path}")
+
+    except FileNotFoundError:
+        print(f"❌ File not found: {xml_input_path}")
+    except Exception as e:
+        print(f"❌ Error: {e}")
+
+# Script entry point
+if __name__ == "__main__":
+    convert_schedules_to_dict(
+        xml_input_path='schedules.xml',
+        output_path='schedules_dict.json'
+    )
