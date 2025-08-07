@@ -1,0 +1,37 @@
+import xml.etree.ElementTree as ET
+
+def get_schedules(prod_id, schedules_dict):
+    matching_schedules = []
+    
+    # Step into the list of schedules
+    schedule_list = schedules_dict.get("SI_RESOURCES", {}).get("SCHEDULES", {}).get("SCHEDULE", [])
+    
+    # Ensure it's a list even if there's only one schedule
+    if isinstance(schedule_list, dict):
+        schedule_list = [schedule_list]
+
+    for schedule in schedule_list:
+        raw_params_xml = schedule.get("SCHEDULE PARAMS")
+        if not raw_params_xml:
+            continue
+        
+        try:
+            # Parse the inner XML string from "SCHEDULE PARAMS"
+            params_root = ET.fromstring(raw_params_xml)
+            for param in params_root.findall(".//Parameter"):
+                name_elem = param.find("Name")
+                value_elem = param.find("Value")
+                
+                if name_elem is not None and name_elem.text == "ProducerMailbox" and value_elem is not None:
+                    mailbox_value = value_elem.text or ""
+                    mailbox_clean = mailbox_value.strip().lstrip('/').split('/')[0]
+                    
+                    if mailbox_clean == prod_id:
+                        matching_schedules.append(schedule)
+                        break  # No need to check other parameters in this schedule
+
+        except ET.ParseError as e:
+            print(f"Error parsing SCHEDULE PARAMS XML: {e}")
+            continue
+
+    return matching_schedules
