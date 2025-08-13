@@ -1,0 +1,47 @@
+import streamlit as st
+import sys
+import io
+import time
+from process import process_producer  # your existing function
+
+class StreamToLogger(io.StringIO):
+    """Redirects prints to both Streamlit UI and terminal."""
+    def __init__(self, placeholder):
+        super().__init__()
+        self.placeholder = placeholder
+        self.logs = ""
+
+    def write(self, message):
+        if message.strip():  # ignore empty lines
+            self.logs += message + "\n"
+            self.placeholder.text(self.logs)
+        return super().write(message)
+
+    def flush(self):
+        pass  # nothing special needed here
+
+# Streamlit UI
+st.set_page_config(page_title="SFG Extraction Tool", layout="wide")
+st.title("📦 SFG Extraction Tool")
+
+producer_ids_input = st.text_area("Producer IDs", height=150, placeholder="P12345\nP67890")
+run_button = st.button("Run Extraction")
+
+if run_button and producer_ids_input.strip():
+    producer_ids = [pid.strip() for pid in producer_ids_input.splitlines() if pid.strip()]
+    
+    log_placeholder = st.empty()
+    logger = StreamToLogger(log_placeholder)
+
+    # Backup original stdout
+    original_stdout = sys.stdout
+    sys.stdout = logger  # Redirect print() output
+
+    try:
+        for pid in producer_ids:
+            print(f"▶ Starting processing for producer ID: {pid}")
+            process_producer(pid)  # your function will print logs
+            print(f"✅ Finished processing for producer ID: {pid}\n")
+            time.sleep(0.5)  # just for smoother UI updates
+    finally:
+        sys.stdout = original_stdout  # Restore stdout
