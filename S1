@@ -1,0 +1,64 @@
+SELECT
+    t.protocolbpname,
+    t.prisendcd_preprocess,
+    x.entity_name,
+    x.entity_details,
+    t.entity_id,
+    t.asciiarmor,
+    t.textmode,
+    t.authorizeduserkeyenabled,
+    t.encryptionmethod,
+    t.sftpscpenabled,
+    t.consumerconnection,
+    t.protocolbpname,
+    t.prisendcd_preprocess,
+    LISTAGG(DISTINCT ci.sender_item, ', ') WITHIN GROUP (ORDER BY ci.sender_item) AS producer_ids
+FROM (
+    SELECT
+        ENTITY_ID,
+        MAX(CASE WHEN EXTENSION_KEY = 'ASCIIARMOR' THEN TRIM(EXTENSION_VALUE) END) AS asciiarmor,
+        MAX(CASE WHEN EXTENSION_KEY = 'TEXTMODE' THEN TRIM(EXTENSION_VALUE) END) AS textmode,
+        MAX(CASE WHEN EXTENSION_KEY = 'AUTHORIZEDUSERKEYENABLED' THEN TRIM(EXTENSION_VALUE) END) AS authorizeduserkeyenabled,
+        MAX(CASE WHEN EXTENSION_KEY = 'PROTOCOLBPNAME' THEN TRIM(EXTENSION_VALUE) END) AS protocolbpname,
+        MAX(CASE WHEN EXTENSION_KEY = 'ENCRYPTIONMETHOD' THEN TRIM(EXTENSION_VALUE) END) AS encryptionmethod,
+        MAX(CASE WHEN EXTENSION_KEY = 'SFTPSCPENABLED' THEN TRIM(EXTENSION_VALUE) END) AS sftpscpenabled,
+        MAX(CASE WHEN EXTENSION_KEY = 'CONSUMERCONNECTION' THEN TRIM(EXTENSION_VALUE) END) AS consumerconnection,
+        MAX(CASE WHEN EXTENSION_KEY = 'PRISENDCD_PREPROCESS' THEN TRIM(EXTENSION_VALUE) END) AS prisendcd_preprocess
+    FROM
+        SCI_ENTITY_EXTNS
+    WHERE
+        EXTENSION_KEY IN (
+            'ASCIIARMOR',
+            'TEXTMODE',
+            'AUTHORIZEDUSERKEYENABLED',
+            'PROTOCOLBPNAME',
+            'ENCRYPTIONMETHOD',
+            'SFTPSCPENABLED',
+            'CONSUMERCONNECTION',
+            'PRISENDCD_PREPROCESS'
+        )
+    GROUP BY
+        ENTITY_ID
+) t
+JOIN SCI_CODE_USR_XREF x
+    ON t.ENTITY_ID = x.TP_OBJECT_ID
+JOIN CODELIST_XREF_ITEM ci
+    ON ci.receiver_item = x.entity_name
+JOIN CODELIST_XREF_VERS cv
+    ON ci.list_name = cv.list_name
+   AND ci.list_version = cv.default_version
+WHERE
+    t.protocolbpname = 'PRISendCD'
+    AND t.prisendcd_preprocess = 'PRI_UniqueMainframeSend'
+GROUP BY
+    t.protocolbpname,
+    t.prisendcd_preprocess,
+    x.entity_name,
+    x.entity_details,
+    t.entity_id,
+    t.asciiarmor,
+    t.textmode,
+    t.authorizeduserkeyenabled,
+    t.encryptionmethod,
+    t.sftpscpenabled,
+    t.consumerconnection;
