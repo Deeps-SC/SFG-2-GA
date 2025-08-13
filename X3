@@ -1,9 +1,0 @@
-SOME_QUERY = """
-    SELECT * FROM my_table
-    WHERE type = '{data_type}' AND status = ?
-"""
-
-
-def run_smart_query(conn, status, data_type):
-    query = SOME_QUERY.format(data_type=data_type)
-    return your_adapter_method(conn, query, [status])
