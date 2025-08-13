@@ -1,0 +1,42 @@
+SELECT
+    LISTAGG(DISTINCT ci.sender_item, ', ') 
+        WITHIN GROUP (ORDER BY ci.sender_item) AS producer_ids,
+    scux.user_id,
+    scux.tp_object_id,
+    extns.entity_id,
+    extns.protocolbpname,
+    extns.prisendcd_preprocess,
+    extns.prisendcd_cdremotefilename
+FROM (
+    SELECT
+        entity_id,
+        MAX(CASE WHEN extension_key = 'PROTOCOLBPNAME' 
+                 THEN TRIM(extension_value) END) AS protocolbpname,
+        MAX(CASE WHEN extension_key = 'PRISendCD_PreProcess' 
+                 THEN TRIM(extension_value) END) AS prisendcd_preprocess,
+        MAX(CASE WHEN extension_key = 'PRISendCD_CDRemoteFilename' 
+                 THEN TRIM(extension_value) END) AS prisendcd_cdremotefilename
+    FROM sci_entity_extns
+    WHERE extension_key IN (
+        'PROTOCOLBPNAME',
+        'PRISendCD_PreProcess',
+        'PRISendCD_CDRemoteFilename'
+    )
+    GROUP BY entity_id
+) extns
+JOIN sci_code_usr_xref scux 
+    ON extns.entity_id = scux.tp_object_id
+JOIN codelist_xref_item ci 
+    ON ci.receiver_item = scux.user_id
+JOIN codelist_xref_vers cv 
+    ON ci.list_name = cv.list_name
+   AND ci.list_version = cv.default_version
+WHERE extns.protocolbpname = 'PRISendCD'
+  AND extns.prisendcd_preprocess = 'PRI_UniqueMainframeSend'
+GROUP BY
+    scux.user_id,
+    scux.tp_object_id,
+    extns.entity_id,
+    extns.protocolbpname,
+    extns.prisendcd_preprocess,
+    extns.prisendcd_cdremotefilename;
