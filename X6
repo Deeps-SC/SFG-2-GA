@@ -1,0 +1,32 @@
+import zipfile
+import io
+
+# ---- Downloads area (after logs) ----
+st.subheader("📥 Downloads")
+
+# individual download buttons
+for pid, file_path in xml_outputs.items():
+    with open(file_path, "rb") as f:
+        st.download_button(
+            label=f"📥 {pid}.xml",
+            data=f.read(),
+            file_name=f"{pid}.xml",
+            mime="application/xml",
+            key=f"dl-{pid}"
+        )
+
+# zip download button
+if xml_outputs:
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w") as zipf:
+        for pid, file_path in xml_outputs.items():
+            zipf.write(file_path, arcname=f"{pid}.xml")
+    zip_buffer.seek(0)
+
+    st.download_button(
+        label="📦 Download All as ZIP",
+        data=zip_buffer,
+        file_name="all_producers_xml.zip",
+        mime="application/zip",
+        key="dl-all"
+    )
