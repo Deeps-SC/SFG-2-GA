@@ -1,0 +1,24 @@
+# keymap.py
+
+# Section-wise key mappings
+SECTION_KEY_MAP = {
+    "packaging": {
+        "org": "organization"
+    },
+    "transport": {
+        "fname": "first_name",
+        "lname": "last_name"
+    },
+    "pwdpolicy": {
+        "emailAddress": "email"
+    }
+}
+
+def normalize_key(section: str, key: str) -> str:
+    """
+    Normalize a key name based on the section-specific mapping.
+    Falls back to key itself if no mapping is found.
+    """
+    if section in SECTION_KEY_MAP and key in SECTION_KEY_MAP[section]:
+        return SECTION_KEY_MAP[section][key]
+    return key
